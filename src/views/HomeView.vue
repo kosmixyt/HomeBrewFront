@@ -1,187 +1,430 @@
-<script setup lang="ts">
-import { onMounted, onUnmounted, ref, nextTick, watch } from 'vue'
-import { Terminal } from 'xterm'
-import { FitAddon } from 'xterm-addon-fit'
-import 'xterm/css/xterm.css'
-import { useSshSocket } from '@/composables/useSshSocket' // Import the composable
-
-// Use the composable
-const {
-  sshSocket, // This is a readonly ref to the socket instance
-  isSshSocketConnected, // WebSocket connection status
-  isSshSessionReady, // SSH PTY session readiness status
-  connectSsh,
-  disconnectSsh,
-  setSshSessionReady
-} = useSshSocket()
-
-
-
-
-// move to good location
-
-const terminalContainer = ref<HTMLElement | null>(null)
-const xterm = ref<Terminal | null>(null)
-const fitAddon = ref<FitAddon | null>(null)
-
-// Define event handlers in the setup scope so they can be added/removed
-const handleSshReady = (message: string) => {
-  console.log('HomeView: SSH Ready:', message)
-  xterm.value?.writeln(`\r\n${message}`)
-  setSshSessionReady(true) // Update session readiness via composable
-}
-
-const handleSshData = (data: string) => {
-  xterm.value?.write(data)
-}
-
-const handleSshError = (errorMessage: string) => {
-  console.error('HomeView: SSH Error:', errorMessage)
-  xterm.value?.writeln(`\r\nSSH Error: ${errorMessage}`)
-  setSshSessionReady(false) // Update session readiness via composable
-}
-
-const handleSshViewDisconnect = () => {
-  // This handler is for the 'disconnect' event on the socket instance,
-  // primarily for UI updates within this component.
-  // The composable handles the core isSshSocketConnected state.
-  console.log('HomeView: Received disconnect event on socket instance.')
-  if (xterm.value && !isSshSocketConnected.value) { // Check composable's state
-    xterm.value?.writeln('\r\nSSH WebSocket Disconnected.')
-  }
-  setSshSessionReady(false) // Ensure session is marked not ready
-}
-
-onMounted(async () => {
-  await nextTick()
-
-
-  if (terminalContainer.value) {
-    const term = new Terminal({
-      cursorBlink: true,
-      convertEol: true,
-    })
-    const addon = new FitAddon()
-    fitAddon.value = addon
-    term.loadAddon(addon)
-    xterm.value = term
-
-    term.open(terminalContainer.value)
-    addon.fit()
-    term.onData((data) => {
-      // Use sshSocket.value from the composable
-      if (sshSocket.value && sshSocket.value.connected) {
-        sshSocket.value.emit('ssh-data', data)
-      }
-    })
-
-    // Connect using the composable's function
-    connectSsh()
-
-    // Watch for the WebSocket connection status from the composable
-    watch(isSshSocketConnected, (connected) => {
-      if (connected && xterm.value && fitAddon.value && sshSocket.value) {
-        xterm.value?.writeln('SSH WebSocket Connected. Initializing PTY...')
-        fitAddon.value.fit()
-        // Emit ssh-init with current terminal dimensions
-        sshSocket.value.emit('ssh-init', { cols: xterm.value.cols, rows: xterm.value.rows })
-      } else if (!connected && xterm.value) {
-        // This message is now primarily handled by handleSshViewDisconnect or composable's disconnect log
-        // xterm.value?.writeln('\r\nSSH WebSocket Disconnected.')
-      }
-    }, { immediate: true }) // immediate: true to run on mount if already connected
-
-    // Watch the sshSocket ref from the composable to attach/detach event listeners
-    watch(sshSocket, (currentSocket, oldSocket) => {
-      if (oldSocket) {
-        oldSocket.off('ssh-ready', handleSshReady)
-        oldSocket.off('ssh-data', handleSshData)
-        oldSocket.off('ssh-error', handleSshError)
-        oldSocket.off('disconnect', handleSshViewDisconnect)
-      }
-      if (currentSocket) {
-        currentSocket.on('ssh-ready', handleSshReady)
-        currentSocket.on('ssh-data', handleSshData)
-        currentSocket.on('ssh-error', handleSshError)
-        currentSocket.on('disconnect', handleSshViewDisconnect) // Listen for disconnect on the instance
-      }
-    }, { immediate: true }) // immediate: true to attach listeners if socket is already available
-  }
-
-  window.addEventListener('resize', handleResize)
-})
-
-onUnmounted(() => {
-  // Clean up listeners from the composable's socket instance
-  if (sshSocket.value) {
-    sshSocket.value.off('ssh-ready', handleSshReady)
-    sshSocket.value.off('ssh-data', handleSshData)
-    sshSocket.value.off('ssh-error', handleSshError)
-    sshSocket.value.off('disconnect', handleSshViewDisconnect)
-  }
-  disconnectSsh()
-  if (xterm.value) {
-    xterm.value.dispose()
-  }
-  window.removeEventListener('resize', handleResize)
-})
-
-const handleResize = () => {
-  if (fitAddon.value && xterm.value) {
-    fitAddon.value.fit()
-    // Use sshSocket.value from the composable
-    if (sshSocket.value && sshSocket.value.connected && xterm.value) {
-      sshSocket.value.emit('ssh-resize', { cols: xterm.value.cols, rows: xterm.value.rows })
-    }
-  }
-}
-</script>
-
 <template>
-  <div class="ssh-terminal-view">
-    <h1>SSH Terminal</h1>
-    <div ref="terminalContainer" id="terminal-container"></div>
-    <!-- Use isSshSessionReady from the composable for the status message -->
-    <p v-if="!isSshSessionReady && !isSshSocketConnected" class="status-disconnected">
-      Connecting to SSH server... If it takes too long, check server logs and connection.
-    </p>
-    <p v-if="!isSshSessionReady && isSshSocketConnected" class="status-disconnected">
-      SSH WebSocket connected, waiting for PTY session to be ready...
-    </p>
+  <div class="ssh-manager" @click="hideContextMenu">
+    <div class="connections-list">
+      <h3>Your SSH Connections</h3>
+      <div v-if="isLoading" class="loading">Loading connections...</div>
+      <div v-else-if="fetchError" class="error-message">{{ fetchError }}</div>
+      <ul v-else-if="credentials.length > 0">
+        <li v-for="cred in credentials" :key="cred.id" class="connection-item"
+          :class="{ 'selected': cred.id === props.selectedId }" @click="selectHost(cred.id)"
+          @contextmenu.prevent="showContextMenu(cred, $event)">
+          <div class="connection-info">
+            <strong>{{ cred.name }}</strong>
+            <span>{{ cred.username }}@{{ cred.host }}:{{ cred.port }}</span>
+          </div>
+          <div class="connection-actions">
+            <button @click.stop="deleteConnection(cred.id)" class="delete-button" :disabled="isDeleting === cred.id"
+              title="Delete">
+              &#x1F5D1; <!-- Trash can icon -->
+            </button>
+          </div>
+        </li>
+      </ul>
+      <div v-else class="no-connections-message">No SSH connections configured yet.</div>
+    </div>
+
+    <!-- Context Menu -->
+    <div v-if="contextMenu.visible" class="context-menu"
+      :style="{ top: contextMenu.y + 'px', left: contextMenu.x + 'px' }" @click.stop>
+      <ul class="context-menu-list">
+        <li @click="openFileManager">Open File Manager</li>
+        <li @click="closeAllFileManagers">Close All File Managers</li>
+        <li @click="closeAllTerminals">Close All Terminals</li>
+      </ul>
+    </div>
   </div>
 </template>
 
+<script setup lang="ts">
+import { ref, onMounted, defineEmits, defineProps } from 'vue';
+
+interface SshCredential {
+  id: string;
+  name: string;
+  host: string;
+  port: number;
+  username: string;
+}
+
+const props = defineProps<{
+  selectedId?: string | null;
+}>();
+
+const emit = defineEmits(['host-selected', 'open-file-manager', 'close-all-file-managers', 'close-all-terminals']);
+
+const credentials = ref<SshCredential[]>([]);
+const isLoading = ref(true);
+const fetchError = ref<string | null>(null);
+const formError = ref<string | null>(null);
+const isSubmitting = ref(false);
+const isDeleting = ref<string | null>(null);
+
+const contextMenu = ref({
+  visible: false,
+  x: 0,
+  y: 0,
+  connection: null as SshCredential | null,
+});
+
+const newConnection = ref({
+  name: '',
+  host: '',
+  port: 22,
+  username: '',
+  password: '',
+});
+
+const API_BASE_URL = 'http://localhost:3000/api/ssh-credentials';
+
+async function fetchCredentials() {
+  isLoading.value = true;
+  fetchError.value = null;
+  try {
+    const response = await fetch(API_BASE_URL, {
+      credentials: 'include',
+    });
+    if (!response.ok) {
+      if (response.status === 401) {
+        fetchError.value = 'Unauthorized. Please log in.';
+        return;
+      }
+      throw new Error(`Failed to fetch credentials: ${response.statusText}`);
+    }
+    credentials.value = await response.json();
+  } catch (error: any) {
+    console.error('Error fetching credentials:', error);
+    fetchError.value = error.message || 'Could not load SSH connections.';
+  } finally {
+    isLoading.value = false;
+  }
+}
+
+async function addConnection() {
+  isSubmitting.value = true;
+  formError.value = null;
+  try {
+    const response = await fetch(API_BASE_URL, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(newConnection.value),
+      credentials: 'include',
+    });
+    if (!response.ok) {
+      const errorData = await response.json();
+      throw new Error(errorData.error || `Failed to add connection: ${response.statusText}`);
+    }
+    newConnection.value = { name: '', host: '', port: 22, username: '', password: '' };
+    await fetchCredentials();
+  } catch (error: any) {
+    console.error('Error adding connection:', error);
+    formError.value = error.message || 'Could not add SSH connection.';
+  } finally {
+    isSubmitting.value = false;
+  }
+}
+
+async function deleteConnection(id: string) {
+  if (!confirm('Are you sure you want to delete this SSH connection?')) {
+    return;
+  }
+  isDeleting.value = id;
+  formError.value = null;
+  try {
+    const response = await fetch(`${API_BASE_URL}/${id}`, {
+      method: 'DELETE',
+      credentials: 'include',
+    });
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      throw new Error(errorData.error || `Failed to delete connection: ${response.statusText}`);
+    }
+    await fetchCredentials();
+  } catch (error: any) {
+    console.error('Error deleting connection:', error);
+    fetchError.value = error.message || 'Could not delete SSH connection.';
+  } finally {
+    isDeleting.value = null;
+  }
+}
+
+function selectHost(credentialId: string) {
+  emit('host-selected', credentialId);
+}
+
+function showContextMenu(connection: SshCredential, event: MouseEvent) {
+  contextMenu.value.connection = connection;
+  contextMenu.value.x = event.clientX;
+  contextMenu.value.y = event.clientY;
+  contextMenu.value.visible = true;
+}
+
+function hideContextMenu() {
+  contextMenu.value.visible = false;
+  contextMenu.value.connection = null;
+}
+
+function openFileManager() {
+  if (contextMenu.value.connection) {
+    emit('open-file-manager', contextMenu.value.connection.id);
+  }
+  hideContextMenu();
+}
+
+function closeAllFileManagers() {
+  emit('close-all-file-managers');
+  hideContextMenu();
+}
+
+function closeAllTerminals() {
+  if (contextMenu.value.connection) {
+    emit('close-all-terminals', contextMenu.value.connection.id);
+  }
+  hideContextMenu();
+}
+
+onMounted(() => {
+  fetchCredentials();
+});
+</script>
+
 <style scoped>
-.ssh-terminal-view {
+.ssh-manager {
+  background-color: #252526;
+  color: #cccccc;
+  padding: 10px;
+  height: 100%;
+  /* Tries to fill its container (.sidebar-connections-section) */
   display: flex;
   flex-direction: column;
-  height: 90vh;
-  /* Adjust as needed */
-  padding: 10px;
+  /* overflow-y: hidden; -- Already set, good. Child .connections-list will scroll. */
 }
 
-#terminal-container {
+.new-connection-form {
+  /* This section should not grow, it has fixed content */
+  flex-shrink: 0;
+  background-color: transparent;
+  padding: 0;
+  margin-bottom: 15px;
+  box-shadow: none;
+}
+
+.connections-list {
   flex-grow: 1;
-  background-color: #1e1e1e;
-  /* Dark background for terminal */
-  padding: 5px;
-  overflow: hidden;
-  /* FitAddon handles scrolling within xterm */
+  /* This allows the list to take available space and scroll */
+  overflow-y: auto;
+  background-color: transparent;
+  padding: 0;
+  margin-bottom: 0;
+  /* No margin at the bottom of the scrolling list */
+  box-shadow: none;
 }
 
-.status-disconnected {
-  color: red;
+.new-connection-form h3,
+.connections-list h3 {
+  margin-top: 0;
+  color: #cccccc;
+  border-bottom: 1px solid #333333;
+  padding-bottom: 8px;
+  margin-bottom: 10px;
+  font-size: 0.9em;
+  text-transform: uppercase;
+  font-weight: normal;
+  padding-left: 5px;
+  /* Indent like VSCode section headers */
+}
+
+.new-connection-form div {
+  margin-bottom: 10px;
+  padding: 0 5px;
+}
+
+.new-connection-form label {
+  display: block;
+  margin-bottom: 3px;
+  font-weight: normal;
+  color: #aaaaaa;
+  font-size: 0.9em;
+}
+
+.new-connection-form input[type="text"],
+.new-connection-form input[type="number"],
+.new-connection-form input[type="password"] {
+  width: calc(100% - 12px);
+  padding: 6px;
+  border: 1px solid #3c3c3c;
+  border-radius: 3px;
+  box-sizing: border-box;
+  background-color: #3c3c3c;
+  color: #cccccc;
+  font-size: 0.9em;
+}
+
+button {
+  background-color: #0e639c;
+  color: white;
+  padding: 6px 12px;
+  border: none;
+  border-radius: 3px;
+  cursor: pointer;
+  font-size: 0.9em;
+  transition: background-color 0.2s;
+  margin-top: 5px;
+  /* Space above button */
+}
+
+button:hover {
+  background-color: #1177bb;
+}
+
+button:disabled {
+  background-color: #555555;
+  color: #888888;
+  cursor: not-allowed;
+}
+
+.error-message {
+  color: #ff6666;
+  /* Brighter red for dark background */
   margin-top: 10px;
+  font-size: 0.9em;
+  padding: 0 5px;
 }
 
-/* Ensure xterm takes up the full space of its container */
-:deep(.xterm) {
-  height: 100% !important;
+.loading,
+.no-connections-message {
+  text-align: center;
+  padding: 20px;
+  color: #888888;
+  font-size: 0.9em;
 }
 
-:deep(.xterm-viewport) {
-  height: 100% !important;
-  overflow-y: scroll !important;
-  /* Ensure viewport itself can scroll if content exceeds */
+.connections-list ul {
+  list-style-type: none;
+  padding: 0;
+  margin: 0;
+}
+
+.connection-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 6px 10px;
+  /* Reduced padding */
+  border-bottom: none;
+  /* Remove individual borders, rely on hover/selection */
+  cursor: pointer;
+  transition: background-color 0.1s ease-in-out;
+  border-radius: 3px;
+  /* Slight rounding */
+  margin: 1px 0;
+  /* Minimal margin */
+}
+
+.connection-item:hover {
+  background-color: #37373d;
+  /* VSCode hover color */
+}
+
+.connection-item.selected {
+  background-color: #094771;
+  /* VSCode selected color (when focused) */
+  color: white;
+}
+
+.connection-item.selected .connection-info strong,
+.connection-item.selected .connection-info span {
+  color: white;
+}
+
+
+.connection-info {
+  flex-grow: 1;
+  display: flex;
+  flex-direction: column;
+  /* Stack name and details */
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.connection-info strong {
+  color: #d4d4d4;
+  /* Main text color for items */
+  font-size: 0.95em;
+  font-weight: normal;
+}
+
+.connection-info span {
+  font-size: 0.8em;
+  color: #9e9e9e;
+  /* Subtler color for details */
+}
+
+.connection-actions {
+  display: flex;
+  align-items: center;
+}
+
+.connection-actions .delete-button {
+  background-color: transparent;
+  color: #cccccc;
+  padding: 2px 4px;
+  border: none;
+  border-radius: 3px;
+  cursor: pointer;
+  font-size: 1em;
+  /* Adjust for icon size */
+  line-height: 1;
+  opacity: 0.6;
+  /* Less prominent */
+  margin-left: 8px;
+}
+
+.connection-item:hover .connection-actions .delete-button {
+  opacity: 1;
+  /* Show more clearly on hover */
+  background-color: #4f4f52;
+  /* Slight background on hover for button */
+}
+
+.connection-actions .delete-button:hover {
+  color: #ff8787;
+  /* Reddish tint on hover for delete */
+  background-color: #5f4040 !important;
+}
+
+/* Remove old connect button style as click on item connects */
+.connect-button {
+  display: none;
+}
+
+.context-menu {
+  position: fixed;
+  background-color: #2d2d30;
+  border: 1px solid #3c3c3c;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.2);
+  z-index: 1000;
+  min-width: 150px;
+  border-radius: 4px;
+}
+
+.context-menu-list {
+  list-style: none;
+  padding: 5px 0;
+  margin: 0;
+}
+
+.context-menu-list li {
+  padding: 8px 15px;
+  cursor: pointer;
+  color: #cccccc;
+  font-size: 0.9em;
+}
+
+.context-menu-list li:hover {
+  background-color: #007acc;
+  color: #ffffff;
 }
 </style>
