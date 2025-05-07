@@ -1,24 +1,25 @@
-import { createRouter, createWebHistory, type RouteRecordRaw } from 'vue-router'; // Modified import
-import HomeView from '../views/HomeView.vue';
+import { createRouter, createWebHistory, type RouteRecordRaw } from 'vue-router';
+import HomePage from '../views/HomePage.vue'; // Import HomePage
+// import SshPage from '../ssh/views/SshPage.vue'; // Update path for SshPage
 import TerminalView from '../components/TerminalView.vue'; // Import TerminalView
+import SshPage from '@/views/SshPage.vue';
 
-const routes: Array<RouteRecordRaw> = [ // Define routes with RouteRecordRaw type
+const routes: Array<RouteRecordRaw> = [
   {
     path: '/',
     name: 'home',
-    component: HomeView,
+    component: HomePage, // Set HomePage as the root route
   },
   {
-    path: '/ssh-terminal', // New route for the terminal
-    name: 'sshTerminal',
-    component: TerminalView,
-    props: route => ({ sshSessionId: route.query.id }), // Pass query.id as sshSessionId prop
+    path: '/ssh',
+    name: 'ssh',
+    component: SshPage, // Use SshPage for SSH-related features
   },
 ];
 
 const router = createRouter({
   history: createWebHistory(import.meta.env.BASE_URL),
-  routes, // Use the defined routes array
+  routes,
 });
 
 export default router;

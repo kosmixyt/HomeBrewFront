@@ -1,7 +1,13 @@
 <template>
   <div class="top-bar">
     <div class="left-section">
-      <button @click="openAddConnectionModal" class="add-connection-button">Add Connection</button>
+      <button 
+        v-if="showAddConnection" 
+        @click="openAddConnectionModal" 
+        class="add-connection-button"
+      >
+        Add Connection
+      </button>
     </div>
     <div class="right-section">
       <div v-if="loading">
@@ -18,7 +24,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted } from 'vue';
+import { ref, onMounted, defineProps } from 'vue';
 
 interface UserProfile {
   id: string;
@@ -26,13 +32,20 @@ interface UserProfile {
   name?: string | null;
 }
 
+const props = defineProps({
+  showAddConnection: {
+    type: Boolean,
+    default: true,
+  },
+});
+
 const user = ref<UserProfile | null>(null);
 const loading = ref(true);
 
 const emit = defineEmits(['open-add-connection-modal']);
 
 function openAddConnectionModal() {
-  emit('open-add-connection-modal');
+  emit('open-add-connection-modal'); // Emit the event to open the modal
 }
 
 onMounted(async () => {

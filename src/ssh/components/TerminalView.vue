@@ -18,7 +18,7 @@ interface Props {
 
 const props = withDefaults(defineProps<Props>(), {
     width: '100%',
-    height: 'calc(100vh - 80px)', // This height might need adjustment if App.vue adds a tab bar
+    height: 'calc(100vh - 50px)', // This height might need adjustment if App.vue adds a tab bar
     initialPath: '',
 });
 

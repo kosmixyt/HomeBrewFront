@@ -74,6 +74,16 @@ const newConnection = ref({
   password: '',
 });
 
+const isAddConnectionModalVisible = ref(false);
+
+function showAddConnectionModal() {
+  isAddConnectionModalVisible.value = true;
+}
+
+function closeAddConnectionModal() {
+  isAddConnectionModalVisible.value = false;
+}
+
 const API_BASE_URL = 'http://localhost:3000/api/ssh-credentials';
 
 async function fetchCredentials() {
@@ -150,7 +160,7 @@ async function deleteConnection(id: string) {
 }
 
 function selectHost(credentialId: string) {
-  emit('host-selected', credentialId);
+  emit('host-selected', credentialId); // Emit the selected SSH session ID
 }
 
 function showContextMenu(connection: SshCredential, event: MouseEvent) {
@@ -173,13 +183,15 @@ function openFileManager() {
 }
 
 function closeAllFileManagers() {
-  emit('close-all-file-managers');
+  console.log('Closing all file managers', contextMenu.value.connection);
+  emit('close-all-file-managers'); // Emit without argument
   hideContextMenu();
 }
 
 function closeAllTerminals() {
+  console.log('Closing all terminals for host', contextMenu.value.connection);
   if (contextMenu.value.connection) {
-    emit('close-all-terminals', contextMenu.value.connection.id);
+    emit('close-all-terminals', contextMenu.value.connection.id); // Emit the event to close all terminals for the host
   }
   hideContextMenu();
 }
@@ -426,5 +438,25 @@ button:disabled {
 .context-menu-list li:hover {
   background-color: #007acc;
   color: #ffffff;
+}
+
+.modal {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background-color: rgba(0, 0, 0, 0.5);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+}
+
+.modal-content {
+  background-color: #252526;
+  padding: 20px;
+  border-radius: 5px;
+  width: 400px;
+  color: #cccccc;
 }
 </style>

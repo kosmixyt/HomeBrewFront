@@ -67,7 +67,7 @@ async function addConnection() {
       throw new Error(errorData.error || `Failed to add connection: ${response.statusText}`);
     }
     newConnection.value = { name: '', host: '', port: 22, username: '', password: '' };
-    emit('close');
+    emit('close'); // Émettre l'événement pour fermer le modal
   } catch (error: any) {
     console.error('Error adding connection:', error);
     formError.value = error.message || 'Could not add SSH connection.';
