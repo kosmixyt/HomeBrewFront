@@ -137,7 +137,6 @@ const closeAllFileManagers = () => {
 }
 
 .sidebar {
-
   height: 100%;
   background-color: #252526;
   color: #cccccc;

@@ -3,6 +3,7 @@ import HomePage from '../views/HomePage.vue'; // Import HomePage
 // import SshPage from '../ssh/views/SshPage.vue'; // Update path for SshPage
 import TerminalView from '../components/TerminalView.vue'; // Import TerminalView
 import SshPage from '@/views/SshPage.vue';
+import WhoisPage from '../views/WhoisPage.vue';
 
 const routes: Array<RouteRecordRaw> = [
   {
@@ -14,6 +15,11 @@ const routes: Array<RouteRecordRaw> = [
     path: '/ssh',
     name: 'ssh',
     component: SshPage, // Use SshPage for SSH-related features
+  },
+  {
+    path: '/whois',
+    name: 'whois',
+    component: WhoisPage,
   },
 ];
 

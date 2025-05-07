@@ -2,7 +2,26 @@
   <div class="home-page">
     <h1>Welcome to HomeBrew</h1>
     <p>Manage your SSH connections, terminals, and file explorers all in one place.</p>
-    <router-link to="/ssh" class="get-started-button">Get Started</router-link>
+    
+    <div class="nav-buttons">
+      <router-link to="/ssh" class="get-started-button">SSH/SFTP panel</router-link>
+      <router-link to="/whois" class="get-started-button">WHOIS Lookup</router-link>
+    </div>
+
+    <!-- Google Search Bar -->
+    <div class="search-container">
+      <form @submit.prevent="searchGoogle">
+        <input 
+          v-model="searchQuery" 
+          type="text" 
+          placeholder="Search the web..."
+          class="search-input"
+        />
+        <button type="submit" class="search-button">
+          <span>🔍</span>
+        </button>
+      </form>
+    </div>
 
     <div class="links-container">
       <div class="section-header">
@@ -146,6 +165,7 @@ const newLink = ref({ name: '', url: '', categoryId: '' });
 const iconFile = ref<File | null>(null);
 const showModal = ref(false);
 const currentDragItem = ref(null);
+const searchQuery = ref(''); // New search query ref
 
 // New category related variables
 const showCategoryModal = ref(false);
@@ -328,6 +348,15 @@ const handleDrop = async (event: DragEvent, categoryId: string | null) => {
   
   currentDragItem.value = null;
 };
+
+// Google Search function
+const searchGoogle = () => {
+  if (searchQuery.value.trim()) {
+    const query = encodeURIComponent(searchQuery.value.trim());
+    window.open(`https://www.google.com/search?q=${query}`, '_blank');
+    searchQuery.value = ''; // Clear the search input after search
+  }
+};
 </script>
 
 <style scoped>
@@ -351,6 +380,12 @@ p {
   margin-bottom: 20px;
 }
 
+.nav-buttons {
+  display: flex;
+  gap: 15px;
+  margin-bottom: 30px;
+}
+
 .get-started-button {
   display: inline-block;
   padding: 10px 20px;
@@ -360,10 +395,51 @@ p {
   border-radius: 5px;
   font-size: 1em;
   transition: background-color 0.2s;
-  margin-bottom: 40px;
 }
 
 .get-started-button:hover {
+  background-color: #1177bb;
+}
+
+.search-container {
+  width: 100%;
+  max-width: 600px;
+  margin-bottom: 30px;
+}
+
+.search-container form {
+  display: flex;
+  width: 100%;
+}
+
+.search-input {
+  flex: 1;
+  padding: 12px 15px;
+  font-size: 1em;
+  border: none;
+  border-radius: 24px 0 0 24px;
+  background-color: #252526;
+  color: #fff;
+  box-shadow: 0 2px 5px rgba(0, 0, 0, 0.2);
+}
+
+.search-input:focus {
+  outline: none;
+  box-shadow: 0 0 0 2px #0e639c;
+}
+
+.search-button {
+  padding: 0 15px;
+  background-color: #0e639c;
+  color: white;
+  font-size: 1.2em;
+  border: none;
+  border-radius: 0 24px 24px 0;
+  cursor: pointer;
+  transition: background-color 0.2s;
+}
+
+.search-button:hover {
   background-color: #1177bb;
 }
 
