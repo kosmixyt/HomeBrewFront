@@ -4,6 +4,7 @@ import HomePage from '../views/HomePage.vue'; // Import HomePage
 import TerminalView from '../components/TerminalView.vue'; // Import TerminalView
 import SshPage from '@/views/SshPage.vue';
 import WhoisPage from '../views/WhoisPage.vue';
+import DockerPage from '../views/DockerPage.vue'; // Import the new DockerPage
 
 const routes: Array<RouteRecordRaw> = [
   {
@@ -20,6 +21,11 @@ const routes: Array<RouteRecordRaw> = [
     path: '/whois',
     name: 'whois',
     component: WhoisPage,
+  },
+  {
+    path: '/docker',
+    name: 'docker',
+    component: DockerPage, // Add the new Docker route
   },
 ];
 

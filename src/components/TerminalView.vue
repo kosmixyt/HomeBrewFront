@@ -29,6 +29,7 @@ let socket: Socket | null = null;
 let resizeObserver: ResizeObserver | null = null;
 let initialCommandSent = false; // Flag to ensure initial command is sent only once
 const terminalId = ref(Date.now().toString());
+let sshReadyTimeout: ReturnType<typeof setTimeout> | null = null; // Ajout du timeout pour ssh-ready
 
 function escapeShellArg(arg: string): string {
     if (arg === '') {
@@ -138,6 +139,16 @@ onMounted(async () => {
             if (term && socket) {
                 console.log(`Emitting ssh-init with cols: ${term.cols}, rows: ${term.rows}`);
                 socket.emit('ssh-init', { cols: term.cols, rows: term.rows });
+                // Démarre le timeout pour ssh-ready
+                if (sshReadyTimeout) clearTimeout(sshReadyTimeout);
+                sshReadyTimeout = setTimeout(() => {
+                    if (socket && socket.connected && term) {
+                        console.log('Pas de ssh-ready après 2s, on relance ssh-init');
+                        socket.emit('ssh-init', { cols: term.cols, rows: term.rows });
+                    }else{
+                        console.log("ssh-ready timeout");
+                    }
+                }, 2000);
             }
         });
 
@@ -161,6 +172,11 @@ onMounted(async () => {
         });
 
         socket.on('ssh-ready', (message: string) => {
+            // Annule le timeout si ssh-ready est reçu
+            if (sshReadyTimeout) {
+                clearTimeout(sshReadyTimeout);
+                sshReadyTimeout = null;
+            }
             console.log(`SSH Ready. Envoyeur de commande initiale...`);
             term?.writeln(`\r\n\x1b[32m${message}\x1b[0m`);
             
@@ -230,6 +246,10 @@ onUnmounted(() => {
     fitAddon = null;
     socket = null;
     resizeObserver = null; // Clear the observer instance
+    if (sshReadyTimeout) {
+        clearTimeout(sshReadyTimeout);
+        sshReadyTimeout = null;
+    }
 });
 
 const handleResize = () => {

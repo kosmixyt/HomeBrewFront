@@ -6,6 +6,7 @@
     <div class="nav-buttons">
       <router-link to="/ssh" class="get-started-button">SSH/SFTP panel</router-link>
       <router-link to="/whois" class="get-started-button">WHOIS Lookup</router-link>
+      <router-link to="/docker" class="get-started-button">Docker Management</router-link>
     </div>
 
     <!-- Google Search Bar -->
@@ -157,15 +158,34 @@
 import { ref, onMounted } from 'vue';
 import { app_url } from '../main';
 
-const data = ref({
+interface LinkItem {
+  id: string;
+  name: string;
+  url: string;
+  iconPath: string;
+  selfHostLinkCategoryId: string | null;
+}
+
+interface LinkCategory {
+  id: string;
+  name: string;
+  Items: LinkItem[];
+}
+
+interface LinksData {
+  categories: LinkCategory[];
+  uncategorizedItems: LinkItem[];
+}
+
+const data = ref<LinksData>({
   categories: [],
   uncategorizedItems: []
 });
 const newLink = ref({ name: '', url: '', categoryId: '' });
 const iconFile = ref<File | null>(null);
 const showModal = ref(false);
-const currentDragItem = ref(null);
-const searchQuery = ref(''); // New search query ref
+const currentDragItem = ref<LinkItem | null>(null);
+const searchQuery = ref('');
 
 // New category related variables
 const showCategoryModal = ref(false);
