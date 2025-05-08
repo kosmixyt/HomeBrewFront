@@ -28,6 +28,7 @@ let fitAddon: FitAddon | null = null;
 let socket: Socket | null = null;
 let resizeObserver: ResizeObserver | null = null;
 let initialCommandSent = false; // Flag to ensure initial command is sent only once
+const terminalId = ref(Date.now().toString());
 
 function escapeShellArg(arg: string): string {
     if (arg === '') {
@@ -125,7 +126,10 @@ onMounted(async () => {
 
         // Socket.IO connection
         socket = io('http://localhost:3000/ssh', {
-            query: { id: currentSshSessionId },
+            query: { 
+                id: currentSshSessionId,
+                terminalId: terminalId.value 
+            },
             withCredentials: true,
         });
 
@@ -157,27 +161,19 @@ onMounted(async () => {
         });
 
         socket.on('ssh-ready', (message: string) => {
-            console.log(`[${props.sshSessionId}] SSH Ready. initialPath: "${props.initialPath}", initialCommandSent: ${initialCommandSent}`);
+            console.log(`SSH Ready. Envoyeur de commande initiale...`);
             term?.writeln(`\r\n\x1b[32m${message}\x1b[0m`);
-            term?.focus();
-
-            // Send initial command if path is provided and not sent yet
-            if (props.initialPath && props.initialPath !== '.' && !initialCommandSent) {
-                const safePath = escapeShellArg(props.initialPath);
-                const commandToSend = `cd ${safePath} \n`;
-                sendToServer(commandToSend);
-                initialCommandSent = true;
-                console.log(`[${props.sshSessionId}] Sent initial command: ${commandToSend.trim()}`);
-            } else if (props.initialPath === '.' && !initialCommandSent) {
-                // If path is '.', just clear or do nothing, no need for 'cd .'
-                // sendToServer('clear\n'); // Optionally clear if it's the root/default path
-                initialCommandSent = true; // Mark as sent to avoid re-sending if logic changes
-                console.log(`[${props.sshSessionId}] Initial path is '.', no 'cd' command sent, marked as initial command handled.`);
-            } else if (initialCommandSent) {
-                console.log(`[${props.sshSessionId}] Initial command already sent for path: "${props.initialPath}"`);
-            } else {
-                console.log(`[${props.sshSessionId}] No initial path provided or condition not met for sending initial 'cd' command.`);
-                initialCommandSent = true; // Mark as handled if no path to prevent issues
+            
+            // Ajouter une vérification de l'état du socket
+            if (socket?.connected) {
+                // Ajouter un délai supplémentaire pour s'assurer que le shell est prêt
+                setTimeout(() => {
+                    if (props.initialPath && !initialCommandSent) {
+                        const safePath = escapeShellArg(props.initialPath);
+                        sendToServer(`cd ${safePath} && clear\n`);
+                        initialCommandSent = true;
+                    }
+                }, 500);
             }
         });
 
